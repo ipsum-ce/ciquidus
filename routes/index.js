@@ -1,8 +1,8 @@
 var express = require('express')
   , router = express.Router()
   , settings = require('../lib/settings')
-  , locale = require('../lib/locale')
   , db = require('../lib/database')
+  , i18next = require('i18next')
   , lib = require('../lib/explorer')
   , qr = require('qr-image');
 
@@ -137,7 +137,6 @@ router.get('/markets/:market', function(req, res) {
       /*if (market === 'bittrex') {
         data = JSON.parse(data);
       }*/
-      console.log(data);
       res.render('./markets/' + market, {
         active: 'markets',
         marketdata: {
@@ -194,6 +193,16 @@ router.get('/network', function(req, res) {
   res.render('network', {active: 'network'});
 });
 
+// Masternodelist
+router.get('/masternodes', function(req, res) {
+    res.render('masternodes', {active: 'masternodes'});
+});
+
+// dnsseed List
+router.get('/dnsseed', function(req, res) {
+  res.render('dnsseed', {active: 'dnsseed'});
+});
+
 router.get('/reward', function(req, res){
   //db.get_stats(settings.coin, function (stats) {
     console.log(stats);
@@ -231,6 +240,10 @@ router.get('/address/:hash/:count', function(req, res) {
   route_get_address(res, req.param('hash'), req.param('count'));
 });
 
+router.get('/search',function(req, res) {
+  route_get_index(res, i18next.t('layout.search.no_results'));
+});
+
 router.post('/search', function(req, res) {
   var query = req.body.search;
   if (query.length == 64) {
@@ -245,7 +258,7 @@ router.post('/search', function(req, res) {
             if (block != 'There was an error. Check your console.') {
               res.redirect('/block/' + query);
             } else {
-              route_get_index(res, locale.ex_search_error + query );
+              route_get_index(res, i18next.t('layout.search.no_results',{query:query}));
             }
           });
         }
@@ -260,7 +273,7 @@ router.post('/search', function(req, res) {
           if (hash != 'There was an error. Check your console.') {
             res.redirect('/block/' + hash);
           } else {
-            route_get_index(res, locale.ex_search_error + query );
+            route_get_index(res, i18next.t('layout.search.no_results',{query:query}));
           }
         });
       }

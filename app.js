@@ -1,7 +1,7 @@
 var express = require('express')
   , path = require('path')
   , chaincoinapi = require('chaincoin-node-api')
-  , favicon = require('static-favicon')
+  , favicon = require('serve-favicon')
   , logger = require('morgan')
   , cookieParser = require('cookie-parser')
   , bodyParser = require('body-parser')
@@ -9,7 +9,10 @@ var express = require('express')
   , routes = require('./routes/index')
   , lib = require('./lib/explorer')
   , db = require('./lib/database')
-  , locale = require('./lib/locale')
+  , dnsseed = require('./lib/dnsseed')
+  , i18next = require('i18next')
+  , i18nextMiddleware = require('i18next-express-middleware')
+  , i18Backend = require('i18next-node-fs-backend')
   , request = require('request');
 
 var app = express();
@@ -17,9 +20,9 @@ var app = express();
 // chaincoinapi
 chaincoinapi.setWalletDetails(settings.wallet);
 if (settings.heavy != true) {
-  chaincoinapi.setAccess('only', ['getinfo', 'getnetworkhashps', 'getmininginfo','getdifficulty', 'getconnectioncount',
-  'getmasternodecount', 'getmasternodecountonline', 'getmasternodelist', 'getvotelist', 'getblockcount', 'getblockhash', 'getblock', 'getrawtransaction', 
-  'getpeerinfo', 'gettxoutsetinfo']);
+  chaincoinapi.setAccess('only', ['getinfo', 'getnetworkhashps', 'getmininginfo', 'getdifficulty', 'getconnectioncount',
+    'getmasternodecount', 'getmasternodecountonline', 'getmasternodelist', 'getvotelist', 'getblockcount', 'getblockhash', 'getblock', 'getrawtransaction',
+    'getpeerinfo', 'gettxoutsetinfo', 'listmasternodes']);
 } else {
   // enable additional heavy api calls
   /*
@@ -34,32 +37,78 @@ if (settings.heavy != true) {
     getmaxmoney - Returns the maximum possible money supply.
   */
   chaincoinapi.setAccess('only', ['getinfo', 'getstakinginfo', 'getnetworkhashps', 'getdifficulty', 'getconnectioncount',
-    'getmasternodecount', 'getmasternodecountonline', 'getmasternodelist', 'getvotelist', 'getblockcount', 'getblockhash', 
-    'getblock', 'getrawtransaction', 'getmaxmoney', 'getvote', 'getmaxvote', 'getphase', 'getreward', 'getpeerinfo', 
-    'getnextrewardestimate', 'getnextrewardwhenstr', 'getnextrewardwhensec', 'getsupply', 'gettxoutsetinfo']);
+    'getmasternodecount', 'getmasternodecountonline', 'getmasternodelist', 'getvotelist', 'getblockcount', 'getblockhash',
+    'getblock', 'getrawtransaction', 'getmaxmoney', 'getvote', 'getmaxvote', 'getphase', 'getreward', 'getpeerinfo',
+    'getnextrewardestimate', 'getnextrewardwhenstr', 'getnextrewardwhensec', 'getsupply', 'gettxoutsetinfo', 'listmasternodes']);
 }
+// Language setup
+i18next
+  .use(i18Backend)
+  .use(i18nextMiddleware.LanguageDetector)
+  .init({
+    interpolation: {
+      format: function (value, format, lng) {
+        if (format === 'uppercase') return value.toUpperCase();
+        if (value instanceof Date) return moment(value).format(format);
+        return value;
+      }
+    },
+    backend: {
+      loadPath: __dirname + '/locale/{{lng}}/{{ns}}.json',
+      addPath: __dirname + '/locale/{{lng}}/{{ns}}.missing.json'
+    },
+    detection: {
+      order: ['querystring', 'cookie'],
+      caches: ['cookie']
+    },
+
+    fallbackLng: settings.language_fallback,
+    preload: settings.language,
+    saveMissing: true,
+    debug: false
+  });
+
+
+
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
+app.set('view engine', 'pug');
+app.use(i18nextMiddleware.handle(i18next));
 
 app.use(favicon(path.join(__dirname, settings.favicon)));
 app.use(logger('dev'));
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Add Languages to Local Variabels
+app.use(function (req, res, next) {
+  res.locals.currentlang = req.language;
+
+  next();
+})
+
+// Language Files for Datatable
+app.use('/datatable/lang', function (req, res) {
+  i18next.changeLanguage(req.language, (err, t) => {
+    if (err) return console.log('something went wrong loading', err);
+    res.send(i18next.t("datatable", { returnObjects: true }));
+  });
+});
+
 
 // routes
 app.use('/api', chaincoinapi.app);
 app.use('/', routes);
-app.use('/ext/getmoneysupply', function(req,res){
-  lib.get_supply(function(supply){
-    res.send(' '+supply);
+app.use('/ext/getmoneysupply', function (req, res) {
+  lib.get_supply(function (supply) {
+    res.send(' ' + supply);
   });
 });
 
-app.use('/ext/getaddress/:hash', function(req,res){
-  db.get_address(req.param('hash'), function(address){
+app.use('/ext/getaddress/:hash', function (req, res) {
+  db.get_address(req.param('hash'), function (address) {
     if (address) {
       var a_ext = {
         address: address.a_id,
@@ -70,40 +119,67 @@ app.use('/ext/getaddress/:hash', function(req,res){
       };
       res.send(a_ext);
     } else {
-      res.send({ error: 'address not found.', hash: req.param('hash')})
+      res.send({ error: 'address not found.', hash: req.param('hash') })
     }
   });
 });
 
-app.use('/ext/getbalance/:hash', function(req,res){
-  db.get_address(req.param('hash'), function(address){
+app.use('/ext/getbalance/:hash', function (req, res) {
+  db.get_address(req.param('hash'), function (address) {
     if (address) {
       res.send((address.balance / 100000000).toString().replace(/(^-+)/mg, ''));
     } else {
-      res.send({ error: 'address not found.', hash: req.param('hash')})
+      res.send({ error: 'address not found.', hash: req.param('hash') })
     }
   });
 });
 
-app.use('/ext/getdistribution', function(req,res){
-  db.get_richlist(settings.coin, function(richlist){
-    db.get_stats(settings.coin, function(stats){
-      db.get_distribution(richlist, stats, function(dist){
+app.use('/ext/getdistribution', function (req, res) {
+  db.get_richlist(settings.coin, function (richlist) {
+    db.get_stats(settings.coin, function (stats) {
+      db.get_distribution(richlist, stats, function (dist) {
         res.send(dist);
       });
     });
   });
 });
 
-app.use('/ext/getlasttxs/:min', function(req,res){
-  db.get_last_txs(settings.index.last_txs, (req.params.min * 100000000), function(txs){
-    res.send({data: txs});
+app.use('/ext/getlasttxs/:min', function (req, res) {
+  db.get_last_txs(settings.index.last_txs, (req.params.min * 100000000), function (txs) {
+    res.send({ data: txs });
   });
 });
 
-app.use('/ext/connections', function(req,res){
-  db.get_peers(function(peers){
-    res.send({data: peers});
+app.use('/ext/connections', function (req, res) {
+  db.get_peers(function (peers) {
+    res.send({ data: peers });
+  });
+});
+
+//Masternodes 
+app.use('/ext/getmasternodes', function (req, res) {
+  db.get_masternodes(function (masternode) {
+    res.send({ data: masternode });
+  });
+});
+
+//Masternodes 
+app.use('/ext/getdnsseeder', function (req, res) {
+  dnsseed.get_seeder(function (data) {
+      res.send({ data: data });
+  });
+});
+
+//Download Dnsseed List
+app.use('/dnsseed/download', function (req, res) {
+  dnsseed.download_seedlist(function (data) {
+    if (data.err) {
+      res.status(404).send('Not found');
+    } else {
+      res.setHeader('Content-disposition', 'attachment; filename="ipsum.config"');
+      res.setHeader('Content-type', 'text/plain');
+      res.status(200).send(data);
+    }
   });
 });
 
@@ -111,7 +187,7 @@ app.use('/ext/connections', function(req,res){
 app.set('title', settings.title);
 app.set('symbol', settings.symbol);
 app.set('coin', settings.coin);
-app.set('locale', locale);
+//app.set('locale', locale);
 app.set('display', settings.display);
 app.set('markets', settings.markets);
 app.set('twitter', settings.twitter);
@@ -132,34 +208,35 @@ app.set('show_sent_received', settings.show_sent_received);
 app.set('logo', settings.logo);
 app.set('theme', settings.theme);
 app.set('labels', settings.labels);
+app.set('languages', settings.languages);
 
 // catch 404 and forward to error handler
-app.use(function(req, res, next) {
-    var err = new Error('Not Found');
-    err.status = 404;
-    next(err);
+app.use(function (req, res, next) {
+  var err = new Error('Not Found');
+  err.status = 404;
+  next(err);
 });
 
 // development error handler
 // will print stacktrace
 if (app.get('env') === 'development') {
-    app.use(function(err, req, res, next) {
-        res.status(err.status || 500);
-        res.render('error', {
-            message: err.message,
-            error: err
-        });
+  app.use(function (err, req, res, next) {
+    res.status(err.status || 500);
+    res.render('error', {
+      message: err.message,
+      error: err
     });
+  });
 }
 
 // production error handler
 // no stacktraces leaked to user
-app.use(function(err, req, res, next) {
-    res.status(err.status || 500);
-    res.render('error', {
-        message: err.message,
-        error: {}
-    });
+app.use(function (err, req, res, next) {
+  res.status(err.status || 500);
+  res.render('error', {
+    message: err.message,
+    error: {}
+  });
 });
 
 module.exports = app;

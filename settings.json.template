@@ -15,6 +15,10 @@
   // coin symbol
   "symbol": "CHC",
 
+ // language settings
+  "languages" : ["de","es","fr","us"],
+  "language_fallback" : "us",
+  
   // logo
   "logo": "/images/ipsum_logo.png",
 
@@ -73,7 +77,8 @@
     "discord": false,
     "search": true,
     "movement": true,
-    "network": true
+    "network": true,
+    "masternodes":true
   },
 
   // index page (valid options for difficulty are POW, POS or Hybrid)
@@ -92,7 +97,8 @@
   },
 
   // market settings
-  //supported markets: bittrex, poloniex, graviex ,yobit, empoex, bleutrade, cryptopia, ccex, coinexchange
+  //supported markets: bittrex, poloniex, yobit, empoex, bleutrade, cryptopia, ccex, coinexchange, gravix
+  //                   crex24
   //default market is loaded by default and determines last price in header
   "markets": {
     "coin": "CHC",
@@ -125,6 +131,12 @@
   // ipstack_api_key: ipstack.com Geo IP. This is the replacement of http://freegeoip.net You need an API Key for the Requests 
   "peers": {
     "ipstack_api_key": "Your API Key" 
+  },
+
+  // Folder of the Dnsseed data from the DNS Seeder
+  "dnsseed":{
+    "pathDump": "/var/lib/dnsseed/dnsseed.dump",
+    "pathStats": "/var/lib/dnsseed/dnsseed.stats"
   },
 
   // twitter, facebook, googleplus, bitcointalk, github, slack, website
